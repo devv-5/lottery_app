@@ -242,3 +242,25 @@ app_license = "mit"
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
+
+
+fixtures = [
+    {
+        "dt": "Web Page",
+        "filters": [
+            [
+                "module",
+                "in",
+                [
+                    "Lottery App"
+                ],
+            ]
+        ],
+    }
+]
+
+scheduler_events = {
+    "all": [ 
+            "lottery_app.api.auto_jodi_scheduler"
+        ]
+}

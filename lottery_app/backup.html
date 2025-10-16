@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!--<meta charset="UTF-8">-->
+    <!--<meta name="viewport" content="width=device-width, initial-scale=1.0">-->
+    <!--<title>Lucky Numbers | Today's Lottery Results</title>-->
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #4CAF50;
+            --primary-dark: #2E7D32;
+            --secondary: #FFC107;
+            --accent: #E91E63;
+            --dark: #1a1a2e;
+            --light: #f8f9fa;
+        }
+        
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+        
+        /* Hero Section */
+        .hero-section {
+            background: linear-gradient(135deg, rgba(26, 26, 46, 0.85) 0%, rgba(45, 52, 54, 0.85) 100%), 
+                        url('http://127.0.0.1:8030/files/watercolor-hindu-deity-representation.jpg');
+            background-size: cover;
+            background-position: center;
+            color: white;
+            padding: 5rem 0;
+            margin-bottom: 3rem;
+            border-radius: 0 0 20px 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        
+        .site-title {
+            font-size: 4rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 0.5rem;
+            text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.5);
+            background: linear-gradient(to right, var(--secondary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .site-subtitle {
+            font-size: 1.5rem;
+            font-weight: 400;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+        
+        /* Last Lucky Number Card */
+        .last-lucky-card {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: 15px;
+            padding: 2rem;
+            color: white;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+            margin-bottom: 2rem;
+            text-align: center;
+            border: none;
+        }
+        
+        .last-lucky-number {
+            font-size: 5rem;
+            font-weight: 800;
+            margin: 1rem 0;
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Date Filter */
+        .date-filter-container {
+            background-color: white;
+            border-radius: 15px;
+            padding: 1.5rem;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            margin-bottom: 2rem;
+        }
+        
+        /* Table Styling */
+        .lottery-table-container {
+            background-color: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            margin-bottom: 3rem;
+        }
+        
+        .table-header {
+            background: linear-gradient(135deg, var(--dark), #16213e);
+            color: white;
+            padding: 1.5rem;
+        }
+        
+        .table-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .table-title i {
+            color: var(--secondary);
+        }
+        
+        .lottery-table {
+            margin: 0;
+        }
+        
+        .lottery-table thead th {
+            background-color: #f1f5f9;
+            color: var(--dark);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 2px solid #e2e8f0;
+            padding: 1rem 1.5rem;
+        }
+        
+        .lottery-table tbody td {
+            padding: 1.2rem 1.5rem;
+            border-bottom: 1px solid #e2e8f0;
+            font-weight: 500;
+        }
+        
+        .lottery-table tbody tr:hover {
+            background-color: #f8fafc;
+            transform: translateY(-2px);
+            transition: all 0.2s ease;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
+        }
+        
+        .time-slot {
+            font-weight: 600;
+            color: var(--primary-dark);
+        }
+        
+        .lucky-number {
+            font-weight: 700;
+            font-size: 1.2rem;
+            color: var(--accent);
+        }
+        
+        /* Responsive Adjustments */
+        @media (max-width: 768px) {
+            .site-title {
+                font-size: 2.5rem;
+            }
+            
+            .site-subtitle {
+                font-size: 1.2rem;
+            }
+            
+            .last-lucky-number {
+                font-size: 3.5rem;
+            }
+            
+            .hero-section {
+                padding: 3rem 0;
+            }
+        }
+        
+        /* Loading Animation */
+        .loading-spinner {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(76, 175, 80, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--primary);
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Custom Button */
+        .btn-lottery {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 0.7rem 1.5rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-lottery:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 7px 15px rgba(76, 175, 80, 0.4);
+            color: white;
+        }
+        
+        /* Custom Form Control */
+        .form-control-lottery {
+            border-radius: 10px;
+            border: 2px solid #e2e8f0;
+            padding: 0.2rem 1rem 1.2rem 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .form-control-lottery:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 0.25rem rgba(76, 175, 80, 0.25);
+        }
+    </style>
+</head>
+<body>
+    <!-- Hero Section -->
+    <section class="hero-section">
+        <div class="container">
+            <div class="row justify-content-center text-center">
+                <div class="col-lg-10">
+                    <h1 class="site-title">Shree Ganesh Lottery</h1>
+                    <p class="site-subtitle">Discover your fortune with today's winning lottery numbers</p>
+                    
+                    <!-- Last Lucky Number -->
+                    <div class="row justify-content-center">
+                        <div class="col-md-8 col-lg-6">
+                            <div class="last-lucky-card">
+                                <h3><i class="fas fa-clock me-2"></i>Last Lucky Number</h3>
+                                <div class="last-lucky-number" id="last-lucky-number">--</div>
+                                <p class="mb-0">As of <span id="last-update-time">--:--:--</span></p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Date Filter -->
+                    <div class="row justify-content-center mt-4">
+                        <div class="col-md-8 col-lg-6">
+                            <div class="date-filter-container mb-4">
+                                <div class="row g-2 align-items-center">
+                                    <!-- Date input -->
+                                    <div class="col-7 col-md-8">
+                                        <input type="date" id="lottery-date" class="form-control form-control-lottery">
+                                    </div>
+                                    <!-- Load button -->
+                                    <div class="col-5 col-md-4 d-grid">
+                                        <button id="load-lottery" class="btn btn-lottery">
+                                            <i class="fas fa-search me-2"></i>Load
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Lottery Results Table -->
+    <div class="container">
+        <div class="lottery-table-container">
+            <div class="table-header">
+                <h2 class="table-title">
+                    <i class="fas fa-trophy"></i>Lottery Results
+                </h2>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover lottery-table" id="lottery-table">
+                    <thead>
+                        <tr>
+                            <th scope="col" width="10%">S.No.</th>
+                            <th scope="col" width="45%">Time Slot</th>
+                            <th scope="col" width="45%">Lucky Number</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="3" class="text-center py-5">
+                                <div class="loading-spinner"></div>
+                                <p class="mt-3 mb-0">Loading today's lucky numbers...</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+<script>
+frappe.ready(async () => {
+    const dateInput = document.getElementById("lottery-date");
+    const loadBtn = document.getElementById("load-lottery");
+    const tbody = document.querySelector("#lottery-table tbody");
+    const lastLuckyNumber = document.getElementById("last-lucky-number");
+    const lastUpdateTime = document.getElementById("last-update-time");
+
+    // Set default date to today
+    const today = frappe.datetime.now_date();
+    if (dateInput) {
+        dateInput.value = today;
+        console.log("[Lottery] Default date set to:", today);
+    }
+
+    function showLoadingState() {
+        if (!tbody) return;
+        
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="3" class="text-center py-5">
+                    <div class="loading-spinner"></div>
+                    <p class="mt-3 mb-0">Loading lucky numbers...</p>
+                </td>
+            </tr>
+        `;
+    }
+
+    function showErrorState(message = "Please try again later") {
+        if (!tbody) return;
+        
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="3" class="text-center py-5 text-danger">
+                    <i class="fas fa-exclamation-triangle fa-2x mb-3"></i>
+                    <h5>Error loading data</h5>
+                    <p>${message}</p>
+                </td>
+            </tr>
+        `;
+    }
+
+    function showEmptyState() {
+        if (!tbody) return;
+        
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="3" class="text-center py-5">
+                    <i class="fas fa-clock fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">No lucky numbers available yet</h5>
+                    <p class="text-muted">Check back later for today's results</p>
+                </td>
+            </tr>
+        `;
+    }
+
+    function updateLastLuckyNumber(lastEntry) {
+        if (lastLuckyNumber) {
+            lastLuckyNumber.textContent = lastEntry?.lucky_number || "--";
+        }
+        
+        if (lastUpdateTime) {
+            const now = new Date();
+            const nowTimeString = now.toLocaleTimeString([], { 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit',
+                hour12: false 
+            });
+            lastUpdateTime.textContent = nowTimeString;
+        }
+
+        console.log("[Lottery] Last lucky number updated:", lastEntry?.lucky_number || "--");
+    }
+
+    function populateTable(entries) {
+        if (!tbody) return;
+        
+        tbody.innerHTML = "";
+        
+        if (!entries || entries.length === 0) {
+            showEmptyState();
+            return;
+        }
+
+        entries.forEach((entry, index) => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${index + 1}</td>
+                <td class="time-slot">${entry.time_slot || '--:--:--'}</td>
+                <td class="lucky-number">${entry.lucky_number || '--'}</td>
+            `;
+            tbody.appendChild(tr);
+            console.log(`[Lottery] Added table row: #${index + 1}`, entry);
+        });
+    }
+
+    async function loadLottery(date) {
+        if (!date) {
+            console.error("[Lottery] No date provided");
+            showErrorState("Please select a date");
+            return;
+        }
+
+        console.log(`[Lottery] Loading lottery entries for date: ${date}`);
+
+        // Show loading state
+        showLoadingState();
+
+        try {
+            const res = await frappe.call({
+                method: "lottery_app.api.get_lottery_entries",
+                args: { date },
+                callback: (response) => {
+                    console.log("[Lottery] API callback received:", response);
+                }
+            });
+
+            console.log("[Lottery] API response:", res);
+
+            if (!res || !res.message) {
+                throw new Error("Invalid response from server");
+            }
+
+            const entries = res.message.entries || [];
+            const lastEntry = res.message.last_entry;
+
+            console.log(`[Lottery] Number of entries fetched: ${entries.length}`);
+            console.log("[Lottery] Last entry:", lastEntry);
+
+            // Update last lucky number display
+            updateLastLuckyNumber(lastEntry);
+
+            // Populate table
+            populateTable(entries);
+
+        } catch (err) {
+            console.error("[Lottery] Error loading lottery entries:", err);
+            
+            let errorMessage = "Please try again later";
+            if (err.message && err.message.includes("Invalid date format")) {
+                errorMessage = "Please select a valid date (YYYY-MM-DD)";
+            } else if (err.message && err.message.includes("Date is required")) {
+                errorMessage = "Please select a date";
+            }
+            
+            showErrorState(errorMessage);
+            
+            // Reset last lucky number display on error
+            if (lastLuckyNumber) lastLuckyNumber.textContent = "--";
+            if (lastUpdateTime) lastUpdateTime.textContent = "--:--:--";
+        }
+    }
+
+    // Initial load
+    if (dateInput && dateInput.value) {
+        loadLottery(dateInput.value);
+    } else {
+        loadLottery(today);
+    }
+
+    // Load on button click
+    if (loadBtn) {
+        loadBtn.addEventListener("click", () => {
+            console.log("[Lottery] Load button clicked");
+            if (dateInput && dateInput.value) {
+                loadLottery(dateInput.value);
+            } else {
+                loadLottery(today);
+            }
+        });
+    }
+
+    // Optional: Load on date change
+    if (dateInput) {
+        dateInput.addEventListener("change", () => {
+            console.log("[Lottery] Date changed to:", dateInput.value);
+            if (dateInput.value) {
+                loadLottery(dateInput.value);
+            }
+        });
+    }
+});
+</script>
+
+
+</body>
+</html>

@@ -1,0 +1,99 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-10-12 20:33:44.476780",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "active",
+  "number_of_jodi",
+  "clear_previous",
+  "column_break_kqte",
+  "auto_generate_jodi",
+  "frequency",
+  "last_generated_on",
+  "section_break_xrav",
+  "entries"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "active",
+   "fieldtype": "Check",
+   "label": "Active"
+  },
+  {
+   "fieldname": "entries",
+   "fieldtype": "Table",
+   "label": "Entries",
+   "options": "Jodi Entry"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_generate_jodi",
+   "fieldtype": "Check",
+   "label": "Auto Generate Jodi"
+  },
+  {
+   "depends_on": "eval:doc.auto_generate_jodi",
+   "fieldname": "number_of_jodi",
+   "fieldtype": "Int",
+   "label": "Number Of Jodi",
+   "mandatory_depends_on": "eval:doc.auto_generate_jodi"
+  },
+  {
+   "depends_on": "eval:doc.auto_generate_jodi",
+   "fieldname": "frequency",
+   "fieldtype": "Duration",
+   "hide_seconds": 1,
+   "label": "Frequency",
+   "mandatory_depends_on": "eval:doc.auto_generate_jodi"
+  },
+  {
+   "fieldname": "column_break_kqte",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_xrav",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "last_generated_on",
+   "fieldtype": "Datetime",
+   "label": "Last Generated On"
+  },
+  {
+   "default": "0",
+   "fieldname": "clear_previous",
+   "fieldtype": "Check",
+   "label": "Clear Previous"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2025-10-15 21:46:38.905136",
+ "modified_by": "Administrator",
+ "module": "Lottery App",
+ "name": "Jodi 36",
+ "owner": "samadmalik04@gmail.com",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
