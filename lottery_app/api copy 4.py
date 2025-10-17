@@ -2,8 +2,7 @@ import frappe
 from frappe import _
 from datetime import datetime, time, timedelta
 from frappe.query_builder import DocType
-from frappe.utils import now_datetime, nowdate, get_datetime, time_diff_in_seconds, to_timedelta, cint
-import random
+
 
 # =====================================================
 # 🔹 Core Public API
@@ -11,13 +10,16 @@ import random
 @frappe.whitelist(allow_guest=True)
 def get_lottery_entries(date=None):
     """Main endpoint: returns entries for given date and last lucky number."""
+    #log(f"Called get_lottery_entries with date: {date}")
+
     validated_date = validate_date(date)
-    now = now_datetime()  # timezone-aware current datetime
+    now = datetime.now()
 
     entries = fetch_lottery_entries_for_date(validated_date, now)
     last_entry = fetch_last_lucky_number(now)
-    jodi_entries = get_36_jodi() or []
+    jodi_entries = get_36_jodi()
 
+    #log(f"Returning {len(entries)} entries and last_entry: {bool(last_entry)} and jodi_entries: {len(jodi_entries)}")
     return {"entries": entries, "last_entry": last_entry, "jodi_entries": jodi_entries}
 
 
@@ -27,7 +29,7 @@ def get_lottery_entries(date=None):
 def validate_date(date_str: str) -> datetime.date:
     """Ensure date exists and has valid YYYY-MM-DD format."""
     if not date_str:
-        return nowdate()
+        return frappe.utils.nowdate()
     try:
         return datetime.strptime(date_str, "%Y-%m-%d").date()
     except ValueError:
@@ -50,6 +52,7 @@ def fetch_lottery_entries_for_date(date, now):
             .orderby(LotteryEntry.time_slot)
             .run(as_dict=True)
         )
+        #log(f"Found {len(records)} total entries for date: {date}")
 
         for rec in records:
             parsed = parse_lottery_time_entry(rec, now)
@@ -57,7 +60,8 @@ def fetch_lottery_entries_for_date(date, now):
                 entries.append(parsed)
 
     except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "fetch_lottery_entries_for_date")
+        #log(f"Error fetching entries for {date}: {e}")
+        pass
 
     return entries
 
@@ -73,12 +77,17 @@ def parse_lottery_time_entry(entry, now):
         return None
 
     try:
-        entry_datetime = get_datetime(f"{entry.date} {time_str}")  # timezone-aware
+        hh, mm, ss = map(int, time_str.split(":"))
+        if not (0 <= hh <= 23 and 0 <= mm <= 59 and 0 <= ss <= 59):
+            return None
+
+        entry_datetime = datetime.combine(entry.date, time(hh, mm, ss))
         if entry_datetime <= now:
             return {"time_slot": time_str, "lucky_number": entry.lucky_number}
 
     except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "parse_lottery_time_entry")
+        #log(f"Malformed entry skipped: {entry} | {e}")
+        pass
 
     return None
 
@@ -89,9 +98,14 @@ def parse_lottery_time_entry(entry, now):
 def fetch_last_lucky_number(now, lookback_limit=50):
     """
     Get the most recent valid lucky number whose (date + time_slot) <= now.
+
+    Strategy:
+      - Fetch the latest `lookback_limit` rows ordered by date desc, time_slot desc.
+      - Return the first row where combined datetime <= now.
     """
     LotteryEntry = DocType("Lottery Entry")
     try:
+        # fetch a small batch of the most recent entries (date desc, time_slot desc)
         results = (
             frappe.qb.from_(LotteryEntry)
             .select(LotteryEntry.date, LotteryEntry.time_slot, LotteryEntry.lucky_number)
@@ -102,34 +116,42 @@ def fetch_last_lucky_number(now, lookback_limit=50):
             .run(as_dict=True)
         )
 
+        if not results:
+            #log("No previous lottery entries found")
+            return None
+
+        # iterate and pick the most recent one that is actually <= now
         for entry in results:
             time_str = normalize_time_format(entry.time_slot)
             if not time_str:
+                # skip malformed time
                 continue
 
-            entry_dt = get_datetime(f"{entry.date} {time_str}")
-            if entry_dt <= now:
+            if is_past_entry(entry.date, time_str, now):
+                #log(f"Last lucky number found -> {entry.date} {time_str}: {entry.lucky_number}")
                 return {
                     "time_slot": time_str,
                     "lucky_number": entry.lucky_number,
                     "lottery_date": entry.date.strftime("%Y-%m-%d"),
                 }
 
+        # if none in the batch was <= now, we log and return None
+        #log(f"No valid past entry found among the {len(results)} most recent entries (limit={lookback_limit}).")
         return None
 
     except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "fetch_last_lucky_number")
+        #log(f"Error fetching last lucky number: {e}")
         return None
-
 
 # =====================================================
 # 🔹 Fetch 36 Jodi
 # =====================================================
 @frappe.whitelist(allow_guest=True)
 def get_36_jodi():
+    # Assuming "Jodi 36" is a Single Doctype with a field "active"
     is_enabled = frappe.db.get_single_value("Jodi 36", "active")
     if not is_enabled:
-        return []
+        return None
 
     JodiEntry = DocType("Jodi Entry")
 
@@ -142,8 +164,10 @@ def get_36_jodi():
         )
         return jodi_list or []
     except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "get_36_jodi")
-        return []
+        frappe.log_error(f"Error fetching Jodi 36 entries: {e}", "get_36_jodi")
+        return None
+
+    
 
 
 # =====================================================
@@ -160,15 +184,18 @@ def normalize_time_format(raw_time):
             return raw_time
         return "00:00:00"
     except Exception as e:
+        #log(f"Time normalization failed: {raw_time} | {e}")
         return None
 
 
 def is_past_entry(entry_date, time_str, now):
     """Return True if the entry datetime is in the past."""
     try:
-        entry_datetime = get_datetime(f"{entry_date} {time_str}")
+        hh, mm, ss = map(int, time_str.split(":"))
+        entry_datetime = datetime.combine(entry_date, time(hh, mm, ss))
         return entry_datetime <= now
     except Exception as e:
+        #log(f"Failed to check past entry for {entry_date} {time_str}: {e}")
         return False
 
 
@@ -177,9 +204,10 @@ def log(msg):
     print(f"[Lottery API] {msg}")
 
 
-# =====================================================
-# 🔹 Auto Jodi Scheduler
-# =====================================================
+import frappe
+import random
+from frappe.utils import now_datetime, time_diff_in_seconds, to_timedelta, cint, get_datetime
+
 @frappe.whitelist(allow_guest=True)
 def auto_jodi_scheduler():
     """
@@ -235,8 +263,9 @@ def auto_create_jodi(settings):
 
 
 # =====================================================
-# 🔹 Scheduler Helper Functions
+# 🔹 Helper Functions
 # =====================================================
+
 def get_frequency_seconds(frequency_value):
     """
     Convert Duration field into seconds.
@@ -246,9 +275,11 @@ def get_frequency_seconds(frequency_value):
         return 86400  # Default 1 day
 
     try:
+        # If it's a string like HH:MM:SS
         td = to_timedelta(frequency_value)
         return int(td.total_seconds())
     except Exception:
+        # fallback numeric seconds
         return int(frequency_value) if str(frequency_value).isdigit() else 86400
 
 

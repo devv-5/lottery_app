@@ -12,7 +12,7 @@ class Lottery(Document):
         """Runs on every save to ensure uniqueness and valid time range."""
         # self.validate_time_range()
         self.append_entries()
-        self.set_date_to_each_entry()
+        # self.set_date_to_each_entry()
 
     def before_insert(self):
         """Auto-generate entries on creation if not present."""
@@ -29,6 +29,7 @@ class Lottery(Document):
     def set_date_to_each_entry(self):
         for entry in self.lottery_entries:
             entry.date = self.date
+            
 
     def append_entries(self):
         """Generate time slots and lucky numbers based on frequency."""
@@ -51,7 +52,7 @@ class Lottery(Document):
         while start < end:
             self.append("lottery_entries", {
                 "time_slot": start.strftime("%H:%M"),
-                # "lucky_number": random.randint(1000, 9999)
+                "date": self.date
             })
             start += timedelta(minutes=interval)
 
