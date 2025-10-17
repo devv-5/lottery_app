@@ -42,7 +42,7 @@ def validate_date(date_str):
 # 🔹 Fetch Entries for Selected Date
 # =====================================================
 def fetch_lottery_entries_for_date(date, now):
-    """Fetch all valid entries for a given date with previous day data."""
+    """Fetch all valid entries for a given date up to current time with previous day data."""
     LotteryEntry = DocType("Lottery Entry")
     entries = []
 
@@ -52,7 +52,6 @@ def fetch_lottery_entries_for_date(date, now):
             date = datetime.strptime(date, "%Y-%m-%d").date()
         
         print(f"[DEBUG] Fetching entries for date: {date} (type: {type(date)})")
-        print(f"[DEBUG] Current time: {now}")
 
         # Get current date entries
         current_records = (
@@ -108,7 +107,7 @@ def fetch_lottery_entries_for_date(date, now):
 # 🔹 Parse and Validate Time Slot Entry
 # =====================================================
 def parse_lottery_time_entry(entry, now, previous_dict=None):
-    """Parse time entry; always return old numbers, conditionally return new numbers."""
+    """Parse and validate time entry; return dict if valid and past."""
     raw_time = entry.time_slot
     time_str = normalize_time_format(raw_time)
     if not time_str:
@@ -116,22 +115,15 @@ def parse_lottery_time_entry(entry, now, previous_dict=None):
 
     try:
         entry_datetime = get_datetime(f"{entry.date} {time_str}")  # timezone-aware
-        
-        # Get previous day's number for the same time slot (always show this)
-        old_number = previous_dict.get(time_str, "--") if previous_dict else "--"
-        
-        # Only show current day's number if the time has passed
         if entry_datetime <= now:
-            lucky_number = entry.lucky_number
-        else:
-            lucky_number = "--"  # Show "--" for future draws
+            # Get previous day's number for the same time slot
+            old_number = previous_dict.get(time_str, "--") if previous_dict else "--"
             
-        return {
-            "time_slot": time_str, 
-            "lucky_number": lucky_number,
-            "old_number": old_number,
-            "is_future": entry_datetime > now  # Add this flag for frontend if needed
-        }
+            return {
+                "time_slot": time_str, 
+                "lucky_number": entry.lucky_number,
+                "old_number": old_number
+            }
 
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "parse_lottery_time_entry")
@@ -176,95 +168,6 @@ def fetch_last_lucky_number(now, lookback_limit=50):
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "fetch_last_lucky_number")
         return None
-    
-    
-# =====================================================
-# 🔹 Monthly Lottery Data API
-# =====================================================
-@frappe.whitelist(allow_guest=True)
-def get_monthly_lottery_data(year=None, month=None):
-    """Get lottery data for entire month in grid format"""
-    try:
-        # Default to current year and month if not provided
-        if not year:
-            year = now_datetime().year
-        if not month:
-            month = now_datetime().month
-        
-        year = int(year)
-        month = int(month)
-        
-        print(f"[DEBUG] Fetching monthly data for {year}-{month}")
-        
-        # Get all days in the month
-        import calendar
-        days_in_month = calendar.monthrange(year, month)[1]
-        
-        # Define time slots (8:00 to 21:00)
-        time_slots = [
-            "08:00:00", "09:00:00", "10:00:00", "11:00:00", "12:00:00",
-            "13:00:00", "14:00:00", "15:00:00", "16:00:00", "17:00:00",
-            "18:00:00", "19:00:00", "20:00:00", "21:00:00"
-        ]
-        
-        # Create date range for the month
-        start_date = f"{year}-{month:02d}-01"
-        end_date = f"{year}-{month:02d}-{days_in_month:02d}"
-        
-        LotteryEntry = DocType("Lottery Entry")
-        
-        # Fetch all entries for the month
-        monthly_entries = (
-            frappe.qb.from_(LotteryEntry)
-            .select(LotteryEntry.date, LotteryEntry.time_slot, LotteryEntry.lucky_number)
-            .where(
-                (LotteryEntry.date >= start_date) & 
-                (LotteryEntry.date <= end_date) & 
-                (LotteryEntry.docstatus == 1)
-            )
-            .orderby(LotteryEntry.date)
-            .orderby(LotteryEntry.time_slot)
-            .run(as_dict=True)
-        )
-        
-        print(f"[DEBUG] Found {len(monthly_entries)} entries for {year}-{month}")
-        
-        # Create a nested dictionary for easy lookup: date -> time_slot -> lucky_number
-        monthly_data = {}
-        for entry in monthly_entries:
-            date_str = entry.date.strftime("%d-%m-%Y")
-            time_str = normalize_time_format(entry.time_slot)
-            
-            if date_str not in monthly_data:
-                monthly_data[date_str] = {}
-            
-            monthly_data[date_str][time_str] = entry.lucky_number
-        
-        # Build the grid data
-        grid_data = []
-        for day in range(1, days_in_month + 1):
-            date_str = f"{day:02d}-{month:02d}-{year}"
-            row_data = {"date": date_str}
-            
-            # Add data for each time slot
-            for time_slot in time_slots:
-                lucky_number = monthly_data.get(date_str, {}).get(time_slot, "")
-                row_data[time_slot] = lucky_number
-            
-            grid_data.append(row_data)
-        
-        return {
-            "grid_data": grid_data,
-            "time_slots": time_slots,
-            "month": month,
-            "year": year,
-            "month_name": calendar.month_name[month]
-        }
-        
-    except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "get_monthly_lottery_data")
-        print(f"[ERROR] get_monthly_lottery_data: {str(e)}")
-        return {"grid_data": [], "time_slots": [], "month": month, "year": year, "error": str(e)}
 
 # =====================================================
 # 🔹 Fetch 36 Jodi

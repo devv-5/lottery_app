@@ -42,7 +42,7 @@ def validate_date(date_str):
 # 🔹 Fetch Entries for Selected Date
 # =====================================================
 def fetch_lottery_entries_for_date(date, now):
-    """Fetch all valid entries for a given date with previous day data."""
+    """Fetch all valid entries for a given date up to current time with previous day data."""
     LotteryEntry = DocType("Lottery Entry")
     entries = []
 
@@ -52,7 +52,6 @@ def fetch_lottery_entries_for_date(date, now):
             date = datetime.strptime(date, "%Y-%m-%d").date()
         
         print(f"[DEBUG] Fetching entries for date: {date} (type: {type(date)})")
-        print(f"[DEBUG] Current time: {now}")
 
         # Get current date entries
         current_records = (
@@ -108,7 +107,7 @@ def fetch_lottery_entries_for_date(date, now):
 # 🔹 Parse and Validate Time Slot Entry
 # =====================================================
 def parse_lottery_time_entry(entry, now, previous_dict=None):
-    """Parse time entry; always return old numbers, conditionally return new numbers."""
+    """Parse and validate time entry; return dict if valid and past."""
     raw_time = entry.time_slot
     time_str = normalize_time_format(raw_time)
     if not time_str:
@@ -116,22 +115,15 @@ def parse_lottery_time_entry(entry, now, previous_dict=None):
 
     try:
         entry_datetime = get_datetime(f"{entry.date} {time_str}")  # timezone-aware
-        
-        # Get previous day's number for the same time slot (always show this)
-        old_number = previous_dict.get(time_str, "--") if previous_dict else "--"
-        
-        # Only show current day's number if the time has passed
         if entry_datetime <= now:
-            lucky_number = entry.lucky_number
-        else:
-            lucky_number = "--"  # Show "--" for future draws
+            # Get previous day's number for the same time slot
+            old_number = previous_dict.get(time_str, "--") if previous_dict else "--"
             
-        return {
-            "time_slot": time_str, 
-            "lucky_number": lucky_number,
-            "old_number": old_number,
-            "is_future": entry_datetime > now  # Add this flag for frontend if needed
-        }
+            return {
+                "time_slot": time_str, 
+                "lucky_number": entry.lucky_number,
+                "old_number": old_number
+            }
 
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "parse_lottery_time_entry")
