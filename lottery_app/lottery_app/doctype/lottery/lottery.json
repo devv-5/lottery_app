@@ -46,26 +46,30 @@
    "fieldtype": "Select",
    "label": "Frequency",
    "options": "15 Mins\n30 Mins\n1 Hour",
+   "read_only": 1,
    "reqd": 1
   },
   {
-   "default": "00:00:00.00",
+   "default": "08:00:00.00",
    "fieldname": "start_time",
    "fieldtype": "Time",
-   "label": "Start Time"
+   "label": "Start Time",
+   "read_only": 1
   },
   {
-   "default": "23:59:59.99",
+   "default": "22:59:59.99",
    "fieldname": "end_time",
    "fieldtype": "Time",
-   "label": "End Time"
+   "label": "End Time",
+   "read_only": 1
   },
   {
    "default": "0",
    "description": "Auto Generate Unfilled Lucky Number",
    "fieldname": "auto_generate_number",
    "fieldtype": "Check",
-   "label": "Auto Generate Number"
+   "label": "Auto Generate Number",
+   "read_only": 1
   },
   {
    "allow_on_submit": 1,
@@ -89,7 +93,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-10-12 03:04:17.329732",
+ "modified": "2025-10-17 10:22:01.399441",
  "modified_by": "Administrator",
  "module": "Lottery App",
  "name": "Lottery",

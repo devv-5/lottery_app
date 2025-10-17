@@ -62,7 +62,7 @@ class Lottery(Document):
 
         already_exists = frappe.db.exists(
             "Lottery",
-            {"date": self.date}
+            {"date": self.date, "docstatus": ["<", 2]},
         )
         if already_exists:
             frappe.throw(f"Lottery for {self.date} already exists.")
