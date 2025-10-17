@@ -144,6 +144,7 @@ def fetch_last_lucky_number(now, lookback_limit=50):
 # =====================================================
 # 🔹 Fetch 36 Jodi
 # =====================================================
+@frappe.whitelist(allow_guest=True)
 def get_36_jodi():
     # Assuming "Jodi 36" is a Single Doctype with a field "active"
     is_enabled = frappe.db.get_single_value("Jodi 36", "active")
@@ -205,7 +206,7 @@ import frappe
 import random
 from frappe.utils import now_datetime, time_diff_in_seconds, to_timedelta, cint, get_datetime
 
-
+@frappe.whitelist(allow_guest=True)
 def auto_jodi_scheduler():
     """
     Scheduled job that auto-generates 'Jodi 36' entries
