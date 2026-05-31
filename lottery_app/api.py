@@ -1,16 +1,41 @@
 import frappe
 from frappe import _
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from frappe.query_builder import DocType
 from frappe.utils import now_datetime, nowdate, get_datetime, time_diff_in_seconds, to_timedelta, cint
 import random
+import calendar
+
+# =====================================================
+# 🔹 FORMATTING HELPERS (Moved from Frontend)
+# =====================================================
+def format_number(num, empty_val="N/A"):
+    """Pad numbers with a leading zero if single digit, handle empty states."""
+    if num is None or str(num).strip() == "":
+        return empty_val
+    if str(num).strip() == "--":
+        return "--"
+    try:
+        return f"{int(num):02d}"
+    except (ValueError, TypeError):
+        return str(num)
+
+def format_time_12h(time_str):
+    """Convert HH:MM:SS to 12-hour AM/PM format."""
+    if not time_str:
+        return "--:--:--"
+    try:
+        # Assuming normalize_time_format gives us HH:MM:SS
+        time_obj = datetime.strptime(time_str, "%H:%M:%S")
+        return time_obj.strftime("%I:%M %p").lstrip("0").replace(" 0", " ") 
+    except Exception:
+        return time_str
 
 # =====================================================
 # 🔹 Core Public API
 # =====================================================
 @frappe.whitelist(allow_guest=True)
 def get_lottery_entries(date=None):
-    """Main endpoint: returns entries for given date and last lucky number."""
     validated_date = validate_date(date)
     now = now_datetime()
 
@@ -18,22 +43,20 @@ def get_lottery_entries(date=None):
     last_entry = fetch_last_lucky_number(now)
     jodi_entries = get_36_jodi() or []
 
+    frappe.log_error("Fetched", {"entries": entries, "last_entry": last_entry, "jodi_entries": jodi_entries})
     return {"entries": entries, "last_entry": last_entry, "jodi_entries": jodi_entries}
 
 # =====================================================
 # 🔹 Validation
 # =====================================================
 def validate_date(date_str):
-    """Ensure date exists and has valid YYYY-MM-DD format."""
     if not date_str:
         return nowdate()
     try:
-        # If it's already a date object, return it
         if isinstance(date_str, datetime):
             return date_str.date()
         if hasattr(date_str, 'date'):
             return date_str.date()
-        # Parse string date
         return datetime.strptime(str(date_str), "%Y-%m-%d").date()
     except ValueError:
         frappe.throw(_("Invalid date format. Please use YYYY-MM-DD"))
@@ -42,65 +65,62 @@ def validate_date(date_str):
 # 🔹 Fetch Entries for Selected Date
 # =====================================================
 def fetch_lottery_entries_for_date(date, now):
-    """Fetch all valid entries for a given date with previous day data."""
+    Lottery = DocType("Lottery")
     LotteryEntry = DocType("Lottery Entry")
     entries = []
 
     try:
-        # Ensure date is a date object
         if isinstance(date, str):
             date = datetime.strptime(date, "%Y-%m-%d").date()
         
-        print(f"[DEBUG] Fetching entries for date: {date} (type: {type(date)})")
-        print(f"[DEBUG] Current time: {now}")
-
-        # Get current date entries
+        # 1. Fetch Current Records (Joined with Parent to check auto_generate setting)
         current_records = (
             frappe.qb.from_(LotteryEntry)
-            .select(LotteryEntry.time_slot, LotteryEntry.lucky_number, LotteryEntry.date)
+            .inner_join(Lottery).on(LotteryEntry.parent == Lottery.name)
+            .select(
+                LotteryEntry.time_slot, 
+                LotteryEntry.lucky_number, 
+                LotteryEntry.date,
+                LotteryEntry.auto_generated_number,
+                Lottery.auto_generate_number.as_("parent_auto_gen")
+            )
             .where((LotteryEntry.date == date) & (LotteryEntry.docstatus == 1))
             .orderby(LotteryEntry.time_slot)
             .run(as_dict=True)
         )
 
-        print(f"[DEBUG] Current records found: {len(current_records)}")
-
-        # Get previous day entries for comparison
+        # 2. Fetch Previous Records
         previous_date = date - timedelta(days=1)
-        print(f"[DEBUG] Previous date: {previous_date}")
-
         previous_records = (
             frappe.qb.from_(LotteryEntry)
-            .select(LotteryEntry.time_slot, LotteryEntry.lucky_number, LotteryEntry.date)
+            .inner_join(Lottery).on(LotteryEntry.parent == Lottery.name)
+            .select(
+                LotteryEntry.time_slot, 
+                LotteryEntry.lucky_number,
+                LotteryEntry.auto_generated_number,
+                Lottery.auto_generate_number.as_("parent_auto_gen")
+            )
             .where((LotteryEntry.date == previous_date) & (LotteryEntry.docstatus == 1))
-            .orderby(LotteryEntry.time_slot)
             .run(as_dict=True)
         )
 
-        print(f"[DEBUG] Previous records found: {len(previous_records)}")
-
-        # Create a dictionary of previous day entries for easy lookup
         previous_dict = {}
         for rec in previous_records:
             time_str = normalize_time_format(rec.time_slot)
             if time_str:
-                previous_dict[time_str] = rec.lucky_number
-                print(f"[DEBUG] Added previous entry: {time_str} -> {rec.lucky_number}")
-
-        print(f"[DEBUG] Previous dict: {previous_dict}")
+                # Resolve the previous number using the fallback logic
+                lucky = rec.lucky_number
+                if not lucky and rec.parent_auto_gen:
+                    lucky = rec.auto_generated_number
+                previous_dict[time_str] = lucky
 
         for rec in current_records:
             parsed = parse_lottery_time_entry(rec, now, previous_dict)
             if parsed:
                 entries.append(parsed)
-                print(f"[DEBUG] Added entry: {parsed}")
-
-        print(f"[DEBUG] Final entries with old numbers: {entries}")
 
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "fetch_lottery_entries_for_date")
-        print(f"[ERROR] fetch_lottery_entries_for_date: {str(e)}")
-        print(f"[ERROR] Date that caused issue: {date} (type: {type(date)})")
 
     return entries
 
@@ -108,34 +128,32 @@ def fetch_lottery_entries_for_date(date, now):
 # 🔹 Parse and Validate Time Slot Entry
 # =====================================================
 def parse_lottery_time_entry(entry, now, previous_dict=None):
-    """Parse time entry; always return old numbers, conditionally return new numbers."""
     raw_time = entry.time_slot
     time_str = normalize_time_format(raw_time)
     if not time_str:
         return None
 
     try:
-        entry_datetime = get_datetime(f"{entry.date} {time_str}")  # timezone-aware
+        entry_datetime = get_datetime(f"{entry.date} {time_str}")
+        old_number_raw = previous_dict.get(time_str, "") if previous_dict else ""
         
-        # Get previous day's number for the same time slot (always show this)
-        old_number = previous_dict.get(time_str, "--") if previous_dict else "--"
-        
-        # Only show current day's number if the time has passed
         if entry_datetime <= now:
-            lucky_number = entry.lucky_number
+            # 🔥 FALLBACK LOGIC
+            lucky_number_raw = entry.lucky_number
+            if not lucky_number_raw and entry.parent_auto_gen:
+                lucky_number_raw = entry.auto_generated_number
         else:
-            lucky_number = "--"  # Show "--" for future draws
+            lucky_number_raw = "--" 
             
         return {
-            "time_slot": time_str, 
-            "lucky_number": lucky_number,
-            "old_number": old_number,
-            "is_future": entry_datetime > now  # Add this flag for frontend if needed
+            "time_slot": format_time_12h(time_str), 
+            "lucky_number": format_number(lucky_number_raw, "N/A"),
+            "old_number": format_number(old_number_raw, "N/A"),
+            "is_future": entry_datetime > now  
         }
 
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "parse_lottery_time_entry")
-        print(f"[ERROR] parse_lottery_time_entry: {str(e)}")
 
     return None
 
@@ -143,14 +161,19 @@ def parse_lottery_time_entry(entry, now, previous_dict=None):
 # 🔹 Fetch Most Recent Lucky Number
 # =====================================================
 def fetch_last_lucky_number(now, lookback_limit=50):
-    """
-    Get the most recent valid lucky number whose (date + time_slot) <= now.
-    """
+    Lottery = DocType("Lottery")
     LotteryEntry = DocType("Lottery Entry")
     try:
         results = (
             frappe.qb.from_(LotteryEntry)
-            .select(LotteryEntry.date, LotteryEntry.time_slot, LotteryEntry.lucky_number)
+            .inner_join(Lottery).on(LotteryEntry.parent == Lottery.name)
+            .select(
+                LotteryEntry.date, 
+                LotteryEntry.time_slot, 
+                LotteryEntry.lucky_number,
+                LotteryEntry.auto_generated_number,
+                Lottery.auto_generate_number.as_("parent_auto_gen")
+            )
             .where((LotteryEntry.date <= now.date()) & (LotteryEntry.docstatus == 1))
             .orderby(LotteryEntry.date, order=frappe.qb.desc)
             .orderby(LotteryEntry.time_slot, order=frappe.qb.desc)
@@ -165,98 +188,121 @@ def fetch_last_lucky_number(now, lookback_limit=50):
 
             entry_dt = get_datetime(f"{entry.date} {time_str}")
             if entry_dt <= now:
-                return {
-                    "time_slot": time_str,
-                    "lucky_number": entry.lucky_number,
-                    "lottery_date": entry.date.strftime("%Y-%m-%d"),
-                }
+                # Apply fallback logic
+                lucky_number_raw = entry.lucky_number
+                if not lucky_number_raw and entry.parent_auto_gen:
+                    lucky_number_raw = entry.auto_generated_number
+                
+                # Ensure we actually have a number to show before returning
+                if lucky_number_raw:
+                    return {
+                        "time_slot": format_time_12h(time_str),
+                        "lucky_number": format_number(lucky_number_raw, "N/A"),
+                        "lottery_date": entry.date.strftime("%Y-%m-%d"),
+                    }
 
         return None
 
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "fetch_last_lucky_number")
         return None
-    
-    
+        
 # =====================================================
 # 🔹 Monthly Lottery Data API
 # =====================================================
 @frappe.whitelist(allow_guest=True)
 def get_monthly_lottery_data(year=None, month=None):
-    """Get lottery data for entire month in grid format"""
     try:
-        # Default to current year and month if not provided
-        if not year:
-            year = now_datetime().year
-        if not month:
-            month = now_datetime().month
+        now = now_datetime()
+        if not year: year = now.year
+        if not month: month = now.month
         
-        year = int(year)
-        month = int(month)
-        
-        print(f"[DEBUG] Fetching monthly data for {year}-{month}")
-        
-        # Get all days in the month
-        import calendar
+        year, month = int(year), int(month)
         days_in_month = calendar.monthrange(year, month)[1]
         
-        # Define time slots (8:00 to 21:00)
-        time_slots = [
-            "08:00:00", "09:00:00", "10:00:00", "11:00:00", "12:00:00",
-            "13:00:00", "14:00:00", "15:00:00", "16:00:00", "17:00:00",
-            "18:00:00", "19:00:00", "20:00:00", "21:00:00","22:00:00",
-            "23:00:00"
-        ]
+        Lottery = DocType("Lottery")
+        LotteryEntry = DocType("Lottery Entry")
         
-        # Create date range for the month
+        # Define dates first so we can use them in the distinct slots query
         start_date = f"{year}-{month:02d}-01"
         end_date = f"{year}-{month:02d}-{days_in_month:02d}"
         
-        LotteryEntry = DocType("Lottery Entry")
+        # 1. FIX: Fetch distinct slots ONLY for submitted entries in the requested month
+        distinct_slots = (
+            frappe.qb.from_(LotteryEntry)
+            .select(LotteryEntry.time_slot)
+            .distinct()
+            .where(
+                (LotteryEntry.docstatus == 1) & 
+                (LotteryEntry.date >= start_date) & 
+                (LotteryEntry.date <= end_date)
+            )
+            .run(as_dict=True)
+        )
         
-        # Fetch all entries for the month
+        raw_time_slots = []
+        for slot in distinct_slots:
+            norm_time = normalize_time_format(slot.time_slot)
+            if norm_time and norm_time not in raw_time_slots:
+                raw_time_slots.append(norm_time)
+                
+        raw_time_slots.sort()
+        formatted_time_slots = [format_time_12h(ts) for ts in raw_time_slots]
+        
+        # 2. Fetch the actual grid data
         monthly_entries = (
             frappe.qb.from_(LotteryEntry)
-            .select(LotteryEntry.date, LotteryEntry.time_slot, LotteryEntry.lucky_number)
+            .inner_join(Lottery).on(LotteryEntry.parent == Lottery.name)
+            .select(
+                LotteryEntry.date, 
+                LotteryEntry.time_slot, 
+                LotteryEntry.lucky_number,
+                LotteryEntry.auto_generated_number,
+                Lottery.auto_generate_number.as_("parent_auto_gen")
+            )
             .where(
                 (LotteryEntry.date >= start_date) & 
                 (LotteryEntry.date <= end_date) & 
-                (LotteryEntry.docstatus == 1)
+                (LotteryEntry.docstatus == 1) &
+                (Lottery.docstatus == 1)
             )
             .orderby(LotteryEntry.date)
             .orderby(LotteryEntry.time_slot)
             .run(as_dict=True)
         )
         
-        print(f"[DEBUG] Found {len(monthly_entries)} entries for {year}-{month}")
-        
-        # Create a nested dictionary for easy lookup: date -> time_slot -> lucky_number
         monthly_data = {}
         for entry in monthly_entries:
             date_str = entry.date.strftime("%d-%m-%Y")
             time_str = normalize_time_format(entry.time_slot)
+            f_time_str = format_time_12h(time_str)
+            entry_dt = get_datetime(f"{entry.date} {time_str}")
             
             if date_str not in monthly_data:
                 monthly_data[date_str] = {}
-            
-            monthly_data[date_str][time_str] = entry.lucky_number
+                
+            if entry_dt > now:
+                monthly_data[date_str][f_time_str] = "--"
+            else:
+                # 🔥 FALLBACK LOGIC
+                lucky_number_raw = entry.lucky_number
+                if not lucky_number_raw and entry.parent_auto_gen:
+                    lucky_number_raw = entry.auto_generated_number
+                    
+                monthly_data[date_str][f_time_str] = format_number(lucky_number_raw, "")
         
-        # Build the grid data
         grid_data = []
         for day in range(1, days_in_month + 1):
             date_str = f"{day:02d}-{month:02d}-{year}"
             row_data = {"date": date_str}
-            
-            # Add data for each time slot
-            for time_slot in time_slots:
-                lucky_number = monthly_data.get(date_str, {}).get(time_slot, "")
-                row_data[time_slot] = lucky_number
-            
+            for f_ts in formatted_time_slots:
+                row_data[f_ts] = monthly_data.get(date_str, {}).get(f_ts, "")
             grid_data.append(row_data)
         
+        frappe.log_error("Monthly Data Fetched", {"month": month, "year": year, "time_slots": formatted_time_slots, "sample_entry": grid_data[0] if grid_data else {}})
         return {
             "grid_data": grid_data,
-            "time_slots": time_slots,
+            "time_slots": formatted_time_slots,
             "month": month,
             "year": year,
             "month_name": calendar.month_name[month]
@@ -264,7 +310,6 @@ def get_monthly_lottery_data(year=None, month=None):
         
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "get_monthly_lottery_data")
-        print(f"[ERROR] get_monthly_lottery_data: {str(e)}")
         return {"grid_data": [], "time_slots": [], "month": month, "year": year, "error": str(e)}
 
 # =====================================================
@@ -285,23 +330,24 @@ def get_36_jodi():
             .orderby(JodiEntry.creation, order=frappe.qb.desc)
             .run(as_dict=True)
         )
-        return jodi_list or []
+        # Format the numbers before sending to frontend
+        for j in jodi_list:
+            j["number"] = format_number(j.get("number"), "")
+        return jodi_list
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "get_36_jodi")
         return []
 
 # =====================================================
-# 🔹 Helpers
+# 🔹 Helpers & Scheduler (Unchanged logic, just kept here)
 # =====================================================
 def normalize_time_format(raw_time):
-    """Convert timedelta or string time into HH:MM:SS."""
     try:
         if isinstance(raw_time, timedelta):
             total = int(raw_time.total_seconds())
             hh, mm, ss = total // 3600, (total % 3600) // 60, total % 60
             return f"{hh:02d}:{mm:02d}:{ss:02d}"
         if isinstance(raw_time, str) and ":" in raw_time:
-            # Ensure consistent time format (HH:MM:SS)
             parts = raw_time.split(':')
             if len(parts) == 2:
                 return f"{parts[0].zfill(2)}:{parts[1].zfill(2)}:00"
@@ -309,88 +355,50 @@ def normalize_time_format(raw_time):
                 return f"{parts[0].zfill(2)}:{parts[1].zfill(2)}:{parts[2].zfill(2)}"
             return raw_time
         return "00:00:00"
-    except Exception as e:
-        print(f"[ERROR] normalize_time_format: {str(e)}")
+    except Exception:
         return None
 
 def is_past_entry(entry_date, time_str, now):
-    """Return True if the entry datetime is in the past."""
     try:
-        entry_datetime = get_datetime(f"{entry.date} {time_str}")
+        entry_datetime = get_datetime(f"{entry_date} {time_str}")
         return entry_datetime <= now
-    except Exception as e:
+    except Exception:
         return False
 
 def log(msg):
-    """Consistent logging wrapper."""
     print(f"[Lottery API] {msg}")
 
-# =====================================================
-# 🔹 Auto Jodi Scheduler
-# =====================================================
 @frappe.whitelist(allow_guest=True)
 def auto_jodi_scheduler():
-    """
-    Scheduled job that auto-generates 'Jodi 36' entries
-    based on the 'Jodi 36' single doctype settings.
-    """
     settings = frappe.get_single("Jodi 36")
-
     if not (settings.active and settings.auto_generate_jodi):
-        frappe.logger().info("[Jodi Scheduler] Skipped: inactive or auto-generation disabled.")
         return
-
     try:
         auto_create_jodi(settings)
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "auto_jodi_scheduler failed")
-        frappe.logger().error(f"[Jodi Scheduler] Failed: {e}")
 
 def auto_create_jodi(settings):
-    """
-    Create Jodi entries according to the frequency duration.
-    """
     number_of_jodi = cint(settings.number_of_jodi or 36)
     frequency_duration = get_frequency_seconds(settings.frequency)
     now = now_datetime()
     last_generated = settings.last_generated_on
 
     if not should_generate_new_batch_by_duration(frequency_duration, last_generated, now):
-        frappe.logger().info("[Jodi Scheduler] Skipping: within frequency interval.")
         return
 
-    frappe.logger().info(f"[Jodi Scheduler] Generating {number_of_jodi} new Jodi entries.")
-
-    # Generate unique 2-digit numbers (00–99)
     jodi_list = generate_unique_jodis(number_of_jodi)
-
-    # Clear previous entries if needed
     if cint(settings.clear_previous) == 1:
         settings.set("entries", [])
-        frappe.logger().info("[Jodi Scheduler] Cleared previous Jodi entries.")
-
-    # Append new child rows correctly
     for num in jodi_list:
         settings.append("entries", {"number": num})
-
-    # Update timestamp
+    
     settings.last_generated_on = now
     settings.save(ignore_permissions=True)
     frappe.db.commit()
 
-    frappe.logger().info(f"[Jodi Scheduler] Successfully created {len(jodi_list)} new Jodi entries.")
-
-# =====================================================
-# 🔹 Scheduler Helper Functions
-# =====================================================
 def get_frequency_seconds(frequency_value):
-    """
-    Convert Duration field into seconds.
-    Handles string, numeric, or timedelta values.
-    """
-    if not frequency_value:
-        return 86400  # Default 1 day
-
+    if not frequency_value: return 86400 
     try:
         td = to_timedelta(frequency_value)
         return int(td.total_seconds())
@@ -398,17 +406,12 @@ def get_frequency_seconds(frequency_value):
         return int(frequency_value) if str(frequency_value).isdigit() else 86400
 
 def should_generate_new_batch_by_duration(frequency_seconds, last_generated, now):
-    if not last_generated:
-        return True
-
+    if not last_generated: return True
     last_generated_dt = get_datetime(last_generated)
     seconds_since_last = time_diff_in_seconds(now, last_generated_dt)
     return seconds_since_last >= frequency_seconds
 
 def generate_unique_jodis(n):
-    """
-    Generate n unique 2-digit Jodi numbers (00–99)
-    """
     n = min(n, 100)
     numbers = [f"{i:02d}" for i in range(100)]
     random.shuffle(numbers)
